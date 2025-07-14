@@ -1,10 +1,11 @@
+import 'package:cleankudla/user/customer.dart';
+import 'package:cleankudla/worker/worker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../admin/organization_page.dart';
-import '../faculty/faculty_page.dart';
 
 class AuthServices {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -115,6 +116,11 @@ class AuthServices {
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (context) => const OrganizationHome()),
+          );
+        }else if (role == 'user') {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => const UserHome()),
           );
         } else if (role == 'worker') {
           Navigator.pushReplacement(

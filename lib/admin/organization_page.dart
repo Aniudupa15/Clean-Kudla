@@ -1,4 +1,5 @@
 
+import 'package:cleankudla/admin/add_user.dart';
 import 'package:cleankudla/admin/admin%20page.dart';
 import 'package:cleankudla/admin/completed_map.dart';
 import 'package:cleankudla/admin/profile_page_organization.dart';
@@ -18,6 +19,7 @@ class _OrganizationHomeState extends State<OrganizationHome> {
 
   final List<Widget> _pages = [
     AllCollectedAreasMapPage(),
+    AdminPanel(),
     AdminRoute(),
     ProfilePageOrg()
   ];
@@ -46,6 +48,7 @@ class _OrganizationHomeState extends State<OrganizationHome> {
         onTap: _onItemTapped,
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.map), label: 'Map'),
+          BottomNavigationBarItem(icon: Icon(Icons.place), label: 'Add Places'),
           BottomNavigationBarItem(icon: Icon(Icons.dashboard), label: 'Dashboard'),
           BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
         ],

@@ -1,8 +1,7 @@
+import 'package:cleankudla/worker/worker.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-
-import '../faculty/faculty_page.dart';
 import 'loggin_page.dart';
 
 class FacultyRegisterPage extends StatefulWidget {

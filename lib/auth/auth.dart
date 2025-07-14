@@ -1,9 +1,10 @@
+import 'package:cleankudla/user/customer.dart';
+import 'package:cleankudla/worker/worker.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../admin/organization_page.dart';
-import '../faculty/faculty_page.dart';
 import '../home_page.dart';
 class AuthPage extends StatefulWidget {
   const AuthPage({super.key});
@@ -66,6 +67,8 @@ class _AuthPageState extends State<AuthPage> {
         return const OrganizationHome();
       case 'worker':
         return const IndividualHome();
+      case 'user':
+        return const UserHome();
       default:
         return const HomePage(); // Default page if role is undefined
     }

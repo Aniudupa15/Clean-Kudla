@@ -1,5 +1,6 @@
-import 'package:cleankudla/faculty/profile_page_faculty.dart';
-import 'package:cleankudla/faculty/worker%20page.dart';
+
+import 'package:cleankudla/worker/profile_page_faculty.dart';
+import 'package:cleankudla/worker/worker%20page.dart';
 import 'package:flutter/material.dart';
 import '../auth/loggin_page.dart';
 

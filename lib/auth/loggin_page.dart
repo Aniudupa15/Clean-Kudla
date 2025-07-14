@@ -1,10 +1,11 @@
 import 'package:cleankudla/auth/register_page.dart';
+import 'package:cleankudla/user/customer.dart';
+import 'package:cleankudla/worker/worker.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../admin/organization_page.dart';
-import '../faculty/faculty_page.dart'; // Replace if needed for "worker"
 import 'auth_services.dart';
 
 class LoginPage extends StatefulWidget {
@@ -38,6 +39,7 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
+      // 1. Authenticate user with Firebase
       UserCredential userCredential = await _auth.signInWithEmailAndPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
@@ -46,49 +48,38 @@ class _LoginPageState extends State<LoginPage> {
       String userEmail = userCredential.user!.email!;
       String uid = userCredential.user!.uid;
 
-      DocumentSnapshot? userRoleDoc;
-      bool isApproved = false;
+      DocumentSnapshot? userDoc; // Renamed from userRoleDoc for clarity
 
-      userRoleDoc = await _firestore.collection('users').doc(uid).get();
+      // 2. Try to get user data from 'users' collection using UID
+      userDoc = await _firestore.collection('users').doc(uid).get();
 
-      if (userRoleDoc.exists) {
-        isApproved = (userRoleDoc['status'] ?? '') == 'approved';
-      } else {
-        userRoleDoc = await _firestore.collection('users').doc(userEmail).get();
-        if (userRoleDoc.exists) {
-          isApproved = (userRoleDoc['status'] ?? '') == 'approved';
-        } else {
-          DocumentSnapshot userPendingDoc = await _firestore.collection('pending_users').doc(userEmail).get();
-          if (userPendingDoc.exists) {
-            isApproved = (userPendingDoc['status'] ?? '') == 'approved';
-            if (isApproved) {
-              _displayMessageToUser('Account approved but user data not found. Contact admin.');
-              await _auth.signOut();
-              return;
-            }
-          } else {
-            _displayMessageToUser('User data not found.');
-            await _auth.signOut();
-            return;
-          }
-        }
+      // 3. If not found by UID, try getting by email (less common, but kept your logic)
+      if (!userDoc.exists) {
+        userDoc = await _firestore.collection('users').doc(userEmail).get();
       }
 
-      if (!isApproved) {
-        _displayMessageToUser('Your account is pending approval.');
-        await _auth.signOut();
+      // 4. Check if user document exists in 'users' collection
+      if (!userDoc.exists) {
+        // If user data is not found in the 'users' collection at all,
+        // it implies the user wasn't fully set up or data is missing.
+        _displayMessageToUser('User data not found. Please register or contact admin.');
+        await _auth.signOut(); // Sign out the user if their data isn't set up
         return;
       }
 
-      Map<String, dynamic> userData = userRoleDoc!.data() as Map<String, dynamic>;
-      String userType = userData['userType'] ?? '';
+      // 5. Get userType directly from the document
+      Map<String, dynamic> userData = userDoc.data() as Map<String, dynamic>;
+      String userType = userData['userType'] ?? ''; // Default to empty string if not found
 
+      // 6. Redirect based on userType
       if (userType == 'admin') {
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => OrganizationHome()));
       } else if (userType == 'worker') {
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => IndividualHome()));
+      } else if (userType == 'user') {
+        Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => UserHome()));
       } else {
-        _displayMessageToUser('Unknown user type: $userType');
+        _displayMessageToUser('Unknown user type: $userType. Please contact admin.');
         await _auth.signOut();
       }
 
@@ -98,10 +89,15 @@ class _LoginPageState extends State<LoginPage> {
         errorMessage = 'No user found for this email.';
       } else if (e.code == 'wrong-password') {
         errorMessage = 'Incorrect password.';
+      } else if (e.code == 'invalid-email') {
+        errorMessage = 'The email address is not valid.';
+      } else if (e.code == 'user-disabled') {
+        errorMessage = 'This user account has been disabled.';
       }
       _displayMessageToUser(errorMessage);
     } catch (e) {
-      _displayMessageToUser('Unexpected error: ${e.toString()}');
+      _displayMessageToUser('Unexpected error during login: ${e.toString()}');
+      // print('Login Error Details: $e'); // You can keep this for your own debugging
     }
 
     if (mounted) {
@@ -213,6 +209,9 @@ class _LoginPageState extends State<LoginPage> {
                       setState(() => _isLoading = true);
                       try {
                         await AuthServices().signInWithGoogle(context);
+                        // After Google sign-in, AuthServices should handle redirection based on user data
+                        // If AuthServices doesn't handle it, you might need additional logic here
+                        // to fetch userType and navigate, similar to the email/password flow.
                       } catch (e) {
                         _displayMessageToUser('Error: ${e.toString()}');
                       } finally {
@@ -220,7 +219,9 @@ class _LoginPageState extends State<LoginPage> {
                       }
                     }),
                     SizedBox(width: 16),
-                    _socialButton('assets/facebook.png', onTap: () {}),
+                    _socialButton('assets/facebook.png', onTap: () {
+                      _displayMessageToUser("Facebook login not implemented.");
+                    }),
                   ],
                 ),
                 SizedBox(height: 24),
