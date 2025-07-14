@@ -1,0 +1,2 @@
+E:/projects/CleanKudla/android/app/.cxx/RelWithDebInfo/65i65t51/x86/CMakeFiles/edit_cache.dir
+E:/projects/CleanKudla/android/app/.cxx/RelWithDebInfo/65i65t51/x86/CMakeFiles/rebuild_cache.dir
