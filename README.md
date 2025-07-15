@@ -61,16 +61,16 @@ Clean Kudla empowers both sanitation workers and administrative staff through a 
 
 ```mermaid
 graph TD
-  subgraph Worker App 👷
-    A[Worker UI] --> B{Background Service}
-    B --> C(Geolocator)
+  subgraph WorkerApp
+    A[Worker UI] --> B[Background Service]
+    B --> C[Geolocator]
     C --> B
     B --> D[Firestore: routes/{workerUid}/logs/{routeId}]
     B --> E[Firestore: admin_ongoing_routes/{routeId}]
     B --> F[Firestore: users/{userId}]
   end
 
-  subgraph Admin Panel 📊
+  subgraph AdminPanel
     G[Admin UI] --> H[admin_ongoing_routes stream]
     G --> I[routes/{workerUid}/logs/{routeId} stream]
     G --> J[users collection query]
@@ -145,7 +145,7 @@ service cloud.firestore {
 ### Flutter Configuration
 
 ```bash
-git clone <your-repo-url>
+git clone <https://github.com/Aniudupa15/Clean-Kudla.git>
 cd clean_kudla
 flutter pub get
 ```
@@ -202,7 +202,7 @@ We're open to contributors! Fork, fix, and submit PRs via GitHub.
 
 ## 📧 Contact
 
-* Email: [support@cleankudla.com](mailto:support@cleankudla.com) *(placeholder)*
+* Email: [support@cleankudla.com](mailto:aniudupa15@gmail.com) *(placeholder)*
 * GitHub: \[Add your GitHub link here]
 
 ## 📜 License
