@@ -23,7 +23,7 @@ Clean Kudla empowers both sanitation workers and administrative staff through a 
 * **Auto-Marking of Houses**: Houses are marked as visited automatically when within a defined proximity.
 * **Smart Proximity Collection**: Triggers auto-collection for registered users and updates their point tally.
 * **Real-time Notifications**: Push alerts for collection events and updates.
-* **Background Tracking**: Foreground service ensures uninterrupted tracking even when app is minimized.
+* **Background Tracking**: Foreground service ensures uninterrupted tracking even when the app is minimized.
 * **Secure Login**: Firebase Authentication guarantees safe sign-ins.
 * **Route Summary Reports**: Post-route data includes full paths and visited locations.
 
@@ -34,9 +34,9 @@ Clean Kudla empowers both sanitation workers and administrative staff through a 
 * **Interactive Route Playback**: Visualize entire paths and collected houses.
 * **Zone Status Overview**:
 
-    * 🟢 **Completed Routes**
-    * 🔴 **Pending Houses**
-    * 🔵 **Collected Houses**
+  * 🟢 **Completed Routes**
+  * 🔴 **Pending Houses**
+  * 🔵 **Collected Houses**
 * **Optimized Data Structure**: Uses a denormalized Firestore structure for performance.
 
 ---
@@ -84,22 +84,22 @@ graph TD
 
 **users/{userId}**:
 
-* fullName, email, userType
-* latitude, longitude
-* points, lastCollectedAt
-* collectedByRoutes: Map of routeId -> workerUid, timestamp
+* `fullName`, `email`, `userType`
+* `latitude`, `longitude`
+* `points`, `lastCollectedAt`
+* `collectedByRoutes`: Map of `routeId` -> `workerUid`, `timestamp`
 
 **routes/{workerUid}/logs/{routeId}**:
 
-* startedAt, endedAt
-* path: list of lat/lng
-* housesVisited: list of lat/lng
+* `startedAt`, `endedAt`
+* `path`: list of `lat/lng`
+* `housesVisited`: list of `lat/lng`
 
 **admin\_ongoing\_routes/{routeId}**:
 
-* routeId, workerUid, workerName
-* currentPath, currentHousesVisited
-* lastUpdated, status
+* `routeId`, `workerUid`, `workerName`
+* `currentPath`, `currentHousesVisited`
+* `lastUpdated`, `status`
 
 ---
 
@@ -117,8 +117,8 @@ graph TD
 2. Enable Firestore and Authentication.
 3. Register Android & iOS apps. Add config files:
 
-    * `google-services.json` to `android/app/`
-    * `GoogleService-Info.plist` to `ios/Runner/`
+   * `google-services.json` to `android/app/`
+   * `GoogleService-Info.plist` to `ios/Runner/`
 
 ### Firestore Rules Example
 
@@ -145,15 +145,15 @@ service cloud.firestore {
 ### Flutter Configuration
 
 ```bash
-git clone <https://github.com/Aniudupa15/Clean-Kudla.git>
+git clone https://github.com/Aniudupa15/Clean-Kudla.git
 cd clean_kudla
 flutter pub get
 ```
 
 #### Android:
 
-* `minSdkVersion >= 21`
-* Add permissions in AndroidManifest.xml:
+* Ensure `minSdkVersion >= 21`
+* Add permissions in `AndroidManifest.xml`:
 
 ```xml
 <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
@@ -163,7 +163,7 @@ flutter pub get
 
 #### iOS:
 
-* Update Info.plist:
+* Update `Info.plist`:
 
 ```xml
 <key>NSLocationWhenInUseUsageDescription</key>
@@ -174,7 +174,7 @@ flutter pub get
 </array>
 ```
 
-* Enable Background Modes in Xcode
+* Enable Background Modes in Xcode (Location Updates + Background Fetch)
 
 ---
 
@@ -198,12 +198,12 @@ flutter pub get
 
 ## 🤝 Contributing
 
-We're open to contributors! Fork, fix, and submit PRs via GitHub.
+We're open to contributors! Fork the repo, fix issues, and submit PRs via GitHub.
 
 ## 📧 Contact
 
-* Email: [support@cleankudla.com](mailto:aniudupa15@gmail.com) *(placeholder)*
-* GitHub: \[Add your GitHub link here]
+* Email: [aniudupa15@gmail.com](mailto:aniudupa15@gmail.com)
+* GitHub: [https://github.com/Aniudupa15](https://github.com/Aniudupa15)
 
 ## 📜 License
 
