@@ -42,12 +42,10 @@ class UserLocation {
     if (data == null) {
       throw Exception("Document data is null for user ${doc.id}");
     }
-    // Safely parse latitude and longitude
     final double? lat = (data['latitude'] as num?)?.toDouble();
     final double? lng = (data['longitude'] as num?)?.toDouble();
 
     if (lat == null || lng == null) {
-      // Throw an error if location data is missing, as these users won't be mappable
       throw Exception("Missing or invalid latitude/longitude for user ${doc.id}");
     }
 
@@ -73,17 +71,16 @@ class _WorkerPageState extends State<WorkerPage> {
   final MapController _mapController = MapController();
   bool _isTracking = false;
   List<LatLng> _routePoints = [];
-  List<LatLng> _markedHouses = []; // Houses worker auto-marks on their path
+  List<LatLng> _markedHouses = [];
   String? _routeId;
   String? _uid;
+  String? _workerFullName; // Store worker's full name for passing to background
   final Distance _distance = const Distance();
   ReceivePort? _receivePort;
 
-  // Stream to listen to all user locations from Firestore
   Stream<List<UserLocation>>? _allUsersStream;
-  List<UserLocation> _allUsers = []; // Stores all user data from Firestore
+  List<UserLocation> _allUsers = [];
 
-  // Variable to hold the worker's current location
   LatLng? _currentWorkerLocation;
 
 
@@ -93,8 +90,25 @@ class _WorkerPageState extends State<WorkerPage> {
     _uid = FirebaseAuth.instance.currentUser?.uid;
     _initializeNotifications();
     _checkLocationPermission();
+    _fetchWorkerFullName(); // Fetch worker's name on init
     _setupBackgroundService();
-    _setupAllUsersStream(); // New: Setup stream to listen to all users
+    _setupAllUsersStream();
+  }
+
+  Future<void> _fetchWorkerFullName() async {
+    if (_uid != null) {
+      try {
+        DocumentSnapshot userDoc = await FirebaseFirestore.instance.collection('users').doc(_uid).get();
+        if (userDoc.exists) {
+          setState(() {
+            _workerFullName = (userDoc.data() as Map<String, dynamic>?)?['fullName'] as String?;
+          });
+          print("Worker Full Name fetched: $_workerFullName"); // Debug print
+        }
+      } catch (e) {
+        print("Error fetching worker full name: $e");
+      }
+    }
   }
 
   void _initializeNotifications() async {
@@ -102,11 +116,12 @@ class _WorkerPageState extends State<WorkerPage> {
     AndroidInitializationSettings('@mipmap/ic_launcher');
 
     const InitializationSettings initializationSettings =
-    InitializationSettings(android: initializationSettingsAndroid);
+    InitializationSettings(android: AndroidInitializationSettings(
+      '@mipmap/ic_launcher',
+    ));
 
     await flutterLocalNotificationsPlugin.initialize(initializationSettings);
 
-    // Request notification permission
     await Permission.notification.request();
   }
 
@@ -142,17 +157,14 @@ class _WorkerPageState extends State<WorkerPage> {
 
           setState(() {
             _routePoints.add(point);
-            // Update worker's current location
             _currentWorkerLocation = point;
 
-            // Check if worker's own path should auto-mark a house
             final alreadyMarked = _markedHouses.any(
                   (existing) => _distance.as(LengthUnit.Meter, existing, point) < 5,
             );
 
             if (!alreadyMarked) {
               _markedHouses.add(point);
-              // Notification for worker's own path house marking
               _showNotification("🏠 Worker path house marked automatically");
             }
           });
@@ -170,7 +182,6 @@ class _WorkerPageState extends State<WorkerPage> {
             _markedHouses = (data['markedHouses'] as List<dynamic>)
                 .map((e) => LatLng(e['latitude'] as double, e['longitude'] as double))
                 .toList();
-            // Set initial worker location from background state
             if (_routePoints.isNotEmpty) {
               _currentWorkerLocation = _routePoints.last;
             }
@@ -180,11 +191,9 @@ class _WorkerPageState extends State<WorkerPage> {
           }
           _showSnackbar("🔄 Re-synced with background tracking.");
         } else if (data['type'] == 'user_collected_notification') {
-          // Notification from background service when a user is collected
           final collectedUserFullName = data['fullName'] as String? ?? 'A user';
           final collectedUserEmail = data['email'] as String? ?? 'No email';
           _showNotification("✅ Collected: $collectedUserFullName ($collectedUserEmail)! (+10 points)");
-          // The UI will refresh the user markers via _allUsersStream
         }
       }
     });
@@ -194,24 +203,20 @@ class _WorkerPageState extends State<WorkerPage> {
     }
   }
 
-  // Function to setup stream for all users in Firestore
   void _setupAllUsersStream() {
     _allUsersStream = FirebaseFirestore.instance
         .collection('users')
-        .where('userType', isEqualTo: 'user') // ADDED FILTER HERE
+        .where('userType', isEqualTo: 'user')
         .snapshots()
         .map((snapshot) => snapshot.docs.map((doc) => UserLocation.fromFirestore(doc)).toList());
 
     _allUsersStream?.listen((users) {
       setState(() {
         _allUsers = users;
-        // print('DEBUG: _allUsers list updated with ${users.length} users.'); // Debug print removed
       });
-      // Optionally move map to the last collected user or the worker's last position
       if (_isTracking && _routePoints.isNotEmpty) {
         _mapController.move(_routePoints.last, _mapController.camera.zoom);
       } else if (_allUsers.isNotEmpty && _currentWorkerLocation == null) {
-        // Move to a default user location if no tracking AND worker's location isn't known yet
         _mapController.move(_allUsers.first.location, _mapController.camera.zoom);
       }
     });
@@ -244,6 +249,15 @@ class _WorkerPageState extends State<WorkerPage> {
       _showSnackbar("❌ User not authenticated");
       return;
     }
+    if (_workerFullName == null) {
+      _showSnackbar("⏳ Worker name not loaded yet. Please wait a moment.");
+      await _fetchWorkerFullName(); // Try fetching again
+      if (_workerFullName == null) {
+        _showSnackbar("❌ Could not get worker name. Cannot start tracking.");
+        return;
+      }
+    }
+
 
     final hasPermission = await Geolocator.checkPermission();
     if (hasPermission == LocationPermission.denied || hasPermission == LocationPermission.deniedForever) {
@@ -258,8 +272,7 @@ class _WorkerPageState extends State<WorkerPage> {
       _isTracking = true;
       _routeId = const Uuid().v4();
       _routePoints = [startPoint];
-      _markedHouses = [startPoint]; // Initial mark for the starting point
-      // Set initial worker location on start
+      _markedHouses = [startPoint];
       _currentWorkerLocation = startPoint;
     });
 
@@ -269,17 +282,33 @@ class _WorkerPageState extends State<WorkerPage> {
         .collection('logs')
         .doc(_routeId);
 
+    // Initial write to worker's log, including workerName
     await routeRef.set({
       'startedAt': FieldValue.serverTimestamp(),
       'status': 'ongoing',
       'routeId': _routeId,
-      'workerUid': _uid, // Store worker UID in the route log
+      'workerUid': _uid,
+      'workerName': _workerFullName, // Store worker's name here
     });
+
+    // Initial write to admin_ongoing_routes
+    final adminRouteRef = FirebaseFirestore.instance
+        .collection('admin_ongoing_routes')
+        .doc(_routeId);
+    await adminRouteRef.set({
+      'workerUid': _uid,
+      'workerName': _workerFullName, // Store worker's name for admin view
+      'routeId': _routeId,
+      'currentPath': [_mapToGeoPoint(startPoint)], // Convert LatLng to GeoPoint for Firestore
+      'currentHousesVisited': [_mapToGeoPoint(startPoint)],
+      'lastUpdated': FieldValue.serverTimestamp(),
+      'status': 'ongoing',
+    }, SetOptions(merge: true));
+
 
     final service = FlutterBackgroundService();
     await service.startService();
 
-    // Send initial data and current allUsers list to background service
     service.invoke('start_tracking', {
       'uid': _uid,
       'routeId': _routeId,
@@ -294,11 +323,18 @@ class _WorkerPageState extends State<WorkerPage> {
         'collectedByRoutes': u.collectedByRoutes,
         'fullName': u.fullName,
       }).toList(),
+      'workerFullName': _workerFullName, // Pass worker's full name to background service
     });
 
     _showSnackbar("🟢 Tracking started. Move to auto-mark houses and collect users.");
     _showNotification("🟢 Collection tracking started");
   }
+
+  // Helper to convert LatLng to GeoPoint for Firestore
+  Map<String, double> _mapToGeoPoint(LatLng point) {
+    return {'latitude': point.latitude, 'longitude': point.longitude};
+  }
+
 
   void _stopTracking() async {
     final service = FlutterBackgroundService();
@@ -313,6 +349,7 @@ class _WorkerPageState extends State<WorkerPage> {
         .collection('logs')
         .doc(_routeId);
 
+    // Final update to worker's log
     try {
       await routeRef.set({
         'endedAt': FieldValue.serverTimestamp(),
@@ -325,6 +362,16 @@ class _WorkerPageState extends State<WorkerPage> {
         }).toList(),
       }, SetOptions(merge: true));
 
+      // Final update to admin_ongoing_routes (to remove or mark completed)
+      final adminRouteRef = FirebaseFirestore.instance
+          .collection('admin_ongoing_routes')
+          .doc(_routeId);
+      // Option 1: Delete from admin_ongoing_routes (if only truly ongoing routes are shown)
+      await adminRouteRef.delete();
+      // Option 2: Update status to 'completed' (if you want history in this collection)
+      // await adminRouteRef.update({'status': 'completed', 'endedAt': FieldValue.serverTimestamp()});
+
+
       _showSnackbar("✅ Route completed and uploaded.");
       _showNotification("✅ Collection route completed");
 
@@ -333,7 +380,7 @@ class _WorkerPageState extends State<WorkerPage> {
         _routeId = null;
         _routePoints = [];
         _markedHouses = [];
-        _currentWorkerLocation = null; // Clear worker location on stop
+        _currentWorkerLocation = null;
       });
 
     } catch (e) {
@@ -383,11 +430,10 @@ class _WorkerPageState extends State<WorkerPage> {
         width: 30,
         height: 30,
         point: point,
-        child: const Icon(Icons.location_on, color: Colors.blueAccent), // Icon for worker's marked houses
+        child: const Icon(Icons.location_on, color: Colors.blueAccent),
       ),
     ).toList();
 
-    // Marker for the worker's current location
     Marker? workerCurrentLocationMarker;
     if (_currentWorkerLocation != null) {
       workerCurrentLocationMarker = Marker(
@@ -398,23 +444,31 @@ class _WorkerPageState extends State<WorkerPage> {
       );
     }
 
-
-    // Markers for all users based on their collected status
     final List<Marker> allUsersMarkers = _allUsers.map(
           (user) {
         final bool isCollectedOnCurrentRoute = _routeId != null && user.collectedByRoutes.containsKey(_routeId);
-        // Determine icon based on whether user is collected on current route or ever
-        IconData iconData = Icons.person_pin;
-        Color iconColor = Colors.grey; // Default uncollected
 
-        if (isCollectedOnCurrentRoute) {
-          iconData = Icons.check_circle; // Collected on THIS route
+        bool isCurrentlyNearByThisWorker = false;
+        if (_currentWorkerLocation != null) {
+          final double distanceToUser = _distance.as(LengthUnit.Meter, _currentWorkerLocation!, user.location);
+          if (distanceToUser < 5) {
+            isCurrentlyNearByThisWorker = true;
+          }
+        }
+
+        IconData iconData = Icons.person_pin;
+        Color iconColor = Colors.grey;
+
+        if (isCurrentlyNearByThisWorker) {
+          iconData = Icons.person_add_alt_1;
+          iconColor = Colors.orange;
+        } else if (isCollectedOnCurrentRoute) {
+          iconData = Icons.check_circle;
           iconColor = Colors.green;
         } else if (user.collectedByRoutes.isNotEmpty) {
-          iconData = Icons.person_pin; // Collected on a previous route
+          iconData = Icons.person_pin;
           iconColor = Colors.blue;
         } else {
-          // Not collected yet
           iconData = Icons.person_pin_circle;
           iconColor = Colors.red;
         }
@@ -422,12 +476,12 @@ class _WorkerPageState extends State<WorkerPage> {
         return Marker(
           width: 50,
           height: 50,
-          point: user.location, // Uses the LatLng from the UserLocation object
+          point: user.location,
           child: Column(
             children: [
               Icon(iconData, color: iconColor, size: 30),
               Text(
-                user.fullName.split(' ')[0], // Display first name
+                user.fullName.split(' ')[0],
                 style: TextStyle(
                     fontSize: 8,
                     fontWeight: FontWeight.bold,
@@ -443,12 +497,10 @@ class _WorkerPageState extends State<WorkerPage> {
       },
     ).toList();
 
-    // Combine all markers for the map
     List<Marker> allMapMarkers = [
       ...workerPathHouseMarkers,
-      ...allUsersMarkers, // All user markers added here
+      ...allUsersMarkers,
     ];
-    // Add the worker's current location marker if it exists
     if (workerCurrentLocationMarker != null) {
       allMapMarkers.add(workerCurrentLocationMarker);
     }
@@ -472,7 +524,6 @@ class _WorkerPageState extends State<WorkerPage> {
           FlutterMap(
             mapController: _mapController,
             options: MapOptions(
-              // Prioritize current worker location if available, then route points, then default
               initialCenter: _currentWorkerLocation ?? (_routePoints.isNotEmpty ? _routePoints.last : LatLng(12.9141, 74.8560)),
               initialZoom: 16,
               interactionOptions: const InteractionOptions(
@@ -485,7 +536,7 @@ class _WorkerPageState extends State<WorkerPage> {
                 userAgentPackageName: 'com.example.clean_kudla',
               ),
               PolylineLayer(polylines: _routePoints.isNotEmpty ? [routePolyline] : <Polyline<Object>>[]),
-              MarkerLayer(markers: allMapMarkers), // All markers combined
+              MarkerLayer(markers: allMapMarkers),
             ],
           ),
           Positioned(
@@ -532,10 +583,8 @@ void onStart(ServiceInstance service) async {
   if (Firebase.apps.isEmpty) {
     await Firebase.initializeApp();
   }
-  // Ensure user is authenticated for Firestore writes
-  // In a real app, you'd handle persistent login more robustly
   if (FirebaseAuth.instance.currentUser == null) {
-    await FirebaseAuth.instance.signInAnonymously(); // Or re-authenticate with stored credentials
+    await FirebaseAuth.instance.signInAnonymously();
   }
 
   final SharedPreferences preferences = await SharedPreferences.getInstance();
@@ -547,7 +596,9 @@ void onStart(ServiceInstance service) async {
   List<Map<String, dynamic>> markedHouses = [];
   final Distance distance = const Distance();
 
-  // List to hold all user locations fetched by the background service
+  // Variable to store worker's full name in background service
+  String? _backgroundWorkerFullName;
+
   List<UserLocation> allUsersInBg = [];
   StreamSubscription<QuerySnapshot>? allUsersStreamSubscription;
 
@@ -566,15 +617,29 @@ void onStart(ServiceInstance service) async {
   isTracking = preferences.getBool('isTracking') ?? false;
   uid = preferences.getString('uid');
   routeId = preferences.getString('routeId');
+  _backgroundWorkerFullName = preferences.getString('workerFullName'); // Load worker name
 
-  // Set up listener for all users in the background service
+
+  // Fetch worker's full name if not already loaded (e.g., app restarted)
+  if (_backgroundWorkerFullName == null && uid != null) {
+    try {
+      DocumentSnapshot userDoc = await FirebaseFirestore.instance.collection('users').doc(uid).get();
+      if (userDoc.exists) {
+        _backgroundWorkerFullName = (userDoc.data() as Map<String, dynamic>?)?['fullName'] as String?;
+        await preferences.setString('workerFullName', _backgroundWorkerFullName ?? 'Unknown Collector');
+      }
+    } catch (e) {
+      print("Background: Error fetching worker's full name on service start: $e");
+    }
+  }
+
+
   allUsersStreamSubscription = FirebaseFirestore.instance
       .collection('users')
-      .where('userType', isEqualTo: 'user') // ADDED FILTER HERE
+      .where('userType', isEqualTo: 'user')
       .snapshots()
       .listen((snapshot) {
     allUsersInBg = snapshot.docs.map((doc) => UserLocation.fromFirestore(doc)).toList();
-    // print('Background: Fetched ${allUsersInBg.length} users in background service.'); // Debug print removed
   });
 
 
@@ -586,7 +651,8 @@ void onStart(ServiceInstance service) async {
       ),
     ).listen((Position position) async {
       if (!isTracking) return;
-      _handleLocationUpdate(service, position, sendPort, preferences, routePoints, markedHouses, distance, allUsersInBg, uid!, routeId!);
+      // Pass the worker's full name to the handler
+      _handleLocationUpdate(service, position, sendPort, preferences, routePoints, markedHouses, distance, allUsersInBg, uid!, routeId!, _backgroundWorkerFullName);
     });
 
     if (service is AndroidServiceInstance) {
@@ -614,11 +680,10 @@ void onStart(ServiceInstance service) async {
     uid = event!['uid'];
     routeId = event['routeId'];
     isTracking = true;
+    _backgroundWorkerFullName = event['workerFullName'] as String?; // Receive worker's name from UI
 
     routePoints = (event['initialRoutePoints'] as List<dynamic>).map((e) => e as Map<String, dynamic>).toList();
     markedHouses = (event['initialMarkedHouses'] as List<dynamic>).map((e) => e as Map<String, dynamic>).toList();
-    // Get current list of all users from UI on start_tracking
-    // Note: This 'allUsers' list passed from the UI would already be filtered
     allUsersInBg = (event['allUsers'] as List<dynamic>).map((e) => UserLocation(
       uid: e['uid'],
       email: e['email'],
@@ -634,6 +699,7 @@ void onStart(ServiceInstance service) async {
     await preferences.setBool('isTracking', isTracking);
     await preferences.setString('uid', uid!);
     await preferences.setString('routeId', routeId!);
+    await preferences.setString('workerFullName', _backgroundWorkerFullName ?? 'Unknown Collector'); // Save worker name
 
 
     positionStream = Geolocator.getPositionStream(
@@ -643,7 +709,8 @@ void onStart(ServiceInstance service) async {
       ),
     ).listen((Position position) async {
       if (!isTracking) return;
-      _handleLocationUpdate(service, position, sendPort, preferences, routePoints, markedHouses, distance, allUsersInBg, uid!, routeId!);
+      // Pass the worker's full name to the handler
+      _handleLocationUpdate(service, position, sendPort, preferences, routePoints, markedHouses, distance, allUsersInBg, uid!, routeId!, _backgroundWorkerFullName);
     });
 
     if (service is AndroidServiceInstance) {
@@ -655,12 +722,13 @@ void onStart(ServiceInstance service) async {
     isTracking = false;
     positionStream?.cancel();
     positionStream = null;
-    allUsersStreamSubscription?.cancel(); // Cancel user stream on stop
+    allUsersStreamSubscription?.cancel();
     await preferences.setBool('isTracking', false);
     await preferences.remove('routePoints');
     await preferences.remove('markedHouses');
     await preferences.remove('uid');
     await preferences.remove('routeId');
+    await preferences.remove('workerFullName'); // Clear worker name on stop
   });
 
   service.on('stopService').listen((event) {
@@ -677,12 +745,14 @@ void onStart(ServiceInstance service) async {
     });
   });
 
+  // Periodically update Firestore with current route status for Admin panel
   Timer.periodic(const Duration(seconds: 30), (timer) async {
     if (service is AndroidServiceInstance) {
       if (isTracking && uid != null && routeId != null) {
         service.setAsForegroundService();
 
         try {
+          // Update worker's own log (routes/{uid}/logs/{routeId})
           final routeRef = FirebaseFirestore.instance
               .collection('routes')
               .doc(uid)
@@ -694,17 +764,34 @@ void onStart(ServiceInstance service) async {
             'currentHousesVisited': markedHouses,
             'lastUpdated': FieldValue.serverTimestamp(),
             'status': 'ongoing',
+            'workerName': _backgroundWorkerFullName ?? 'Unknown Collector', // Ensure name is here too
+            'workerUid': uid,
           }, SetOptions(merge: true));
+
+          // NEW: Update admin_ongoing_routes collection
+          final adminRouteRef = FirebaseFirestore.instance
+              .collection('admin_ongoing_routes')
+              .doc(routeId);
+
+          await adminRouteRef.set({
+            'workerUid': uid,
+            'workerName': _backgroundWorkerFullName ?? 'Unknown Collector', // THIS IS THE KEY FIELD
+            'routeId': routeId,
+            'currentPath': routePoints,
+            'currentHousesVisited': markedHouses,
+            'lastUpdated': FieldValue.serverTimestamp(),
+            'status': 'ongoing',
+          }, SetOptions(merge: true));
+
         } catch (e) {
           print("Firestore update error in background: $e");
         }
       }
     }
 
-    // Stop the background service if tracking is not active and the timer runs
     if (!isTracking) {
       timer.cancel();
-      service.stopSelf(); // Automatically stop after some time if not tracking
+      service.stopSelf();
     }
   });
 }
@@ -718,9 +805,10 @@ Future<void> _handleLocationUpdate(
     List<Map<String, dynamic>> routePoints,
     List<Map<String, dynamic>> markedHouses,
     Distance distance,
-    List<UserLocation> allUsers, // Pass all users to the handler
-    String workerUid, // Pass worker UID
-    String currentRouteId, // Pass current route ID
+    List<UserLocation> allUsers,
+    String workerUid,
+    String currentRouteId,
+    String? workerFullName, // New parameter for worker's full name
     ) async {
   final workerCurrentLatLng = LatLng(position.latitude, position.longitude);
 
@@ -732,7 +820,6 @@ Future<void> _handleLocationUpdate(
 
   routePoints.add(point);
 
-  // Check if worker's own path should auto-mark a house
   final alreadyMarkedWorkerHouse = markedHouses.any((existing) {
     final existingLatLng = LatLng(existing['latitude'], existing['longitude']);
     return distance.as(LengthUnit.Meter, existingLatLng, workerCurrentLatLng) < 5;
@@ -740,7 +827,6 @@ Future<void> _handleLocationUpdate(
 
   if (!alreadyMarkedWorkerHouse) {
     markedHouses.add(point);
-    // Show notification for automatically marked house on worker's path
     await flutterLocalNotificationsPlugin.show(
       DateTime.now().millisecondsSinceEpoch ~/ 1000,
       'Clean Kudla',
@@ -762,20 +848,15 @@ Future<void> _handleLocationUpdate(
     final userLocationLatLng = user.location;
     final double distanceToUser = distance.as(LengthUnit.Meter, workerCurrentLatLng, userLocationLatLng);
 
-    // Check if within 5 meters and not already collected on THIS route
-    if (distanceToUser < 5000 && !user.collectedByRoutes.containsKey(currentRouteId)) {
-      // print('Background: Worker is near user ${user.uid} (${user.fullName}). Distance: $distanceToUser m'); // Debug print removed
-
+    if (distanceToUser < 5 && !user.collectedByRoutes.containsKey(currentRouteId)) {
       try {
         final userDocRef = FirebaseFirestore.instance.collection('users').doc(user.uid);
 
-        // Use a transaction to safely update points and collected status
         await FirebaseFirestore.instance.runTransaction((transaction) async {
           final freshUserDoc = await transaction.get(userDocRef);
           final currentPoints = (freshUserDoc.data()?['points'] as num?)?.toInt() ?? 0;
           final currentCollectedByRoutes = (freshUserDoc.data()?['collectedByRoutes'] as Map<String, dynamic>?) ?? {};
 
-          // Double check if already collected on this route within the transaction
           if (!currentCollectedByRoutes.containsKey(currentRouteId)) {
             final newPoints = currentPoints + 10;
             currentCollectedByRoutes[currentRouteId] = {
@@ -786,11 +867,9 @@ Future<void> _handleLocationUpdate(
             transaction.update(userDocRef, {
               'points': newPoints,
               'collectedByRoutes': currentCollectedByRoutes,
-              'lastCollectedAt': FieldValue.serverTimestamp(), // Optional: last collected time
+              'lastCollectedAt': FieldValue.serverTimestamp(),
             });
 
-            // print('Background: User ${user.uid} (${user.fullName}) collected. Points: $newPoints'); // Debug print removed
-            // Send notification to UI for user collection
             sendPort?.send({
               'type': 'user_collected_notification',
               'uid': user.uid,
@@ -798,9 +877,8 @@ Future<void> _handleLocationUpdate(
               'email': user.email,
             });
 
-            // Show local notification for collected user
             await flutterLocalNotificationsPlugin.show(
-              DateTime.now().millisecondsSinceEpoch ~/ 1000 + 1, // Unique ID
+              DateTime.now().millisecondsSinceEpoch ~/ 1000 + 1,
               'Clean Kudla - User Collected!',
               '✅ ${user.fullName} (${user.email}) collected! (+10 points)',
               const NotificationDetails(
@@ -820,7 +898,6 @@ Future<void> _handleLocationUpdate(
       }
     }
   }
-
 
   // Save current worker's route state to preferences
   await preferences.setStringList('routePoints', routePoints.map((e) => jsonEncode(e)).toList());
